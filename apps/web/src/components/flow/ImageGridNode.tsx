@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, useRef } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
@@ -40,7 +40,17 @@ async function generateImage(
       }),
     }
   );
-  const data = await res.json();
+
+  const text = await res.text();
+  if (!text) throw new Error("Empty response from server");
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid response: ${text.slice(0, 100)}`);
+  }
+
   if (!res.ok) throw new Error(data.error || "Failed to generate");
   return data.url || `data:image/png;base64,${data.b64_json}`;
 }
@@ -51,6 +61,7 @@ function ImageGridNode({ data }: NodeProps) {
     Array(4).fill({ url: null, loading: true, error: null })
   );
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const generatingRef = useRef(false);
 
   useEffect(() => {
     decryptFromStore().then((key) => setApiKey(key || null));
@@ -64,6 +75,10 @@ function ImageGridNode({ data }: NodeProps) {
       );
       return;
     }
+
+    // Prevent double execution from React StrictMode
+    if (generatingRef.current) return;
+    generatingRef.current = true;
 
     // Launch 4 concurrent requests
     for (let i = 0; i < 4; i++) {
